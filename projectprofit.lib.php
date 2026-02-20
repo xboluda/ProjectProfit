@@ -350,6 +350,7 @@ function projectprofit_render_html($db, $data, $forpdf = false)
 function projectprofit_get_report_data($db, $start_date, $end_date, $fk_project = 0)
 {
     require_once DOL_DOCUMENT_ROOT.'/custom/projectprofit/class/ProjectProfitReport.class.php';
+    dol_syslog("projectprofit_get_report_data::start start_date=".$start_date." end_date=".$end_date." fk_project=".(int) $fk_project, LOG_DEBUG);
 
     $report = new ProjectProfitReport($db);
     if (!method_exists($report, 'buildReport')) {
@@ -358,6 +359,12 @@ function projectprofit_get_report_data($db, $start_date, $end_date, $fk_project 
 
     $data = $report->buildReport($start_date, $end_date, $fk_project);
     if (empty($data) || !isset($data['hierarchy'])) {
+        dol_syslog("projectprofit_get_report_data::invalid payload", LOG_ERR);
+        return array('error' => 'Report data empty or invalid hierarchy');
+    }
+
+    dol_syslog("projectprofit_get_report_data::ok parents=".count($data['hierarchy']), LOG_DEBUG);
+
         return array('error' => 'Report data empty or invalid hierarchy');
     }
 
@@ -412,6 +419,7 @@ function projectprofit_calculate_totals($data)
 function projectprofit_build_pdf_report($db, $data, $start_date, $end_date, $fk_project = 0)
 {
     global $conf, $langs;
+    dol_syslog("projectprofit_build_pdf_report::start", LOG_INFO);
 
     if (empty($data) || empty($data['hierarchy'])) {
         return array('error' => 'No report data to build PDF');
@@ -423,6 +431,7 @@ function projectprofit_build_pdf_report($db, $data, $start_date, $end_date, $fk_
         } elseif (file_exists(DOL_DOCUMENT_ROOT.'/core/modules/facture/doc/tcpdf/tcpdf.php')) {
             require_once DOL_DOCUMENT_ROOT.'/core/modules/facture/doc/tcpdf/tcpdf.php';
         } else {
+            dol_syslog("projectprofit_build_pdf_report::tcpdf_not_found", LOG_ERR);
             return array('error' => 'TCPDF library not found');
         }
     }
@@ -439,6 +448,9 @@ function projectprofit_build_pdf_report($db, $data, $start_date, $end_date, $fk_
 
     if (!is_dir($tmpdir)) {
         if (!@mkdir($tmpdir, 0775, true) && !is_dir($tmpdir)) {
+            dol_syslog("projectprofit_build_pdf_report::tmpdir_create_failed tmpdir=".$tmpdir, LOG_ERR);
+            return array('error' => 'Unable to create temp directory: '.$tmpdir);
+        }
             return array('error' => 'Unable to create temp directory: '.$tmpdir);
         }
     if (!dol_is_dir($tmpdir)) {
@@ -467,6 +479,10 @@ function projectprofit_build_pdf_report($db, $data, $start_date, $end_date, $fk_
 
     $pdf->writeHTML($html, true, false, true, false, '');
     $pdf->Output($filepath, 'F');
+    dol_syslog("projectprofit_build_pdf_report::pdf_written path=".$filepath, LOG_INFO);
+
+    if (!file_exists($filepath)) {
+        dol_syslog("projectprofit_build_pdf_report::pdf_missing_after_write path=".$filepath, LOG_ERR);
 
     if (!file_exists($filepath)) {
         return array('error' => 'Unable to write PDF report');

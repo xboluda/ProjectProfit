@@ -55,6 +55,10 @@ class ProjectProfitCron
         }
 
         $data = $report_payload['data'];
+        dol_syslog("ProjectProfitCron::Report payload loaded. Parent groups=".count($data['hierarchy']), LOG_INFO);
+
+        echo "Generando PDF<br>\n";
+        dol_syslog("ProjectProfitCron::Generating PDF file", LOG_INFO);
 
         echo "Generando PDF<br>\n";
         $pdf_meta = projectprofit_build_pdf_report($db, $data, $start_date, $end_date, $fk_project);
@@ -64,6 +68,8 @@ class ProjectProfitCron
             return -1;
         }
 
+        $pdf_file = $pdf_meta['path'];
+        dol_syslog("ProjectProfitCron::PDF generated at ".$pdf_file, LOG_INFO);
         echo "Generando PDF<br>\n";
         $pdf_meta = projectprofit_build_pdf_report($db, $data, $start_date, $end_date, $fk_project);
         if (!empty($pdf_meta['error'])) {
@@ -122,6 +128,7 @@ class ProjectProfitCron
         );
 
         echo "Enviando mail<br>\n";
+        dol_syslog("ProjectProfitCron::Sending email to ".$email_to, LOG_INFO);
         $res = $mail->sendfile();
 
         if ($res) {
