@@ -336,6 +336,68 @@ function projectprofit_render_html($db, $data, $forpdf = false)
     return ob_get_clean();
 }
 
+
+/**
+ * Fetch report data using ProjectProfitReport provider.
+ *
+ * @param DoliDB $db
+ * @param string $start_date
+ * @param string $end_date
+ * @param int    $fk_project
+ *
+ * @return array{data:array}|array{error:string}
+ */
+function projectprofit_get_report_data($db, $start_date, $end_date, $fk_project = 0)
+{
+    require_once DOL_DOCUMENT_ROOT.'/custom/projectprofit/class/ProjectProfitReport.class.php';
+
+    $report = new ProjectProfitReport($db);
+    if (!method_exists($report, 'buildReport')) {
+        return array('error' => 'buildReport method missing in ProjectProfitReport');
+    }
+
+    $data = $report->buildReport($start_date, $end_date, $fk_project);
+    if (empty($data) || !isset($data['hierarchy'])) {
+        return array('error' => 'Report data empty or invalid hierarchy');
+    }
+
+    return array('data' => $data);
+}
+
+/**
+ * Calculate totals from report hierarchy.
+ *
+ * @param array $data
+ *
+ * @return array{ingresos:float,gastos:float,profit:float}
+ */
+function projectprofit_calculate_totals($data)
+{
+    $tot_ing = 0;
+    $tot_gas = 0;
+
+    foreach ($data['hierarchy'] as $hijos) {
+        foreach ($hijos as $servicios) {
+            foreach ($servicios as $lineas) {
+                foreach ($lineas as $l) {
+                    if ($l->tipo_linea == 'INGRESO') {
+                        $tot_ing += (float) $l->total_ht;
+                    }
+                    if ($l->tipo_linea == 'GASTO') {
+                        $tot_gas += (float) $l->total_ht;
+                    }
+                }
+            }
+        }
+    }
+
+    return array(
+        'ingresos' => $tot_ing,
+        'gastos' => $tot_gas,
+        'profit' => $tot_ing - $tot_gas,
+    );
+}
+
 /**
  * Build a PDF report file for ProjectProfit.
  *

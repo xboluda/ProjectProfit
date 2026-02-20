@@ -1,5 +1,4 @@
 <?php
-require_once DOL_DOCUMENT_ROOT.'/custom/projectprofit/class/ProjectProfitReport.class.php';
 require_once DOL_DOCUMENT_ROOT.'/core/class/CMailFile.class.php';
 require_once DOL_DOCUMENT_ROOT.'/custom/projectprofit/lib/projectprofit.lib.php';
 
@@ -46,23 +45,22 @@ class ProjectProfitCron
         echo "Params: $start_date - $end_date - $fk_project - $email_to<br>\n";
         dol_syslog("ProjectProfitCron::Params parsed: start=$start_date end=$end_date fk_project=$fk_project email=$email_to", LOG_INFO);
 
-        // Crear objeto report
-        echo "Instanciando ProjectProfitReport<br>\n";
-        dol_syslog("ProjectProfitCron::Creating ProjectProfitReport object", LOG_INFO);
-
-        $report = new ProjectProfitReport($db);
-        if (!method_exists($report, 'buildReport')) {
-            dol_syslog("ProjectProfitCron::ERROR buildReport method does not exist", LOG_ERR);
-            echo "ERROR: buildReport method missing<br>\n";
+        // Crear payload usando proveedor ProjectProfitReport
+        dol_syslog("ProjectProfitCron::Building report data through projectprofit_get_report_data", LOG_INFO);
+        $report_payload = projectprofit_get_report_data($db, $start_date, $end_date, $fk_project);
+        if (!empty($report_payload['error'])) {
+            dol_syslog("ProjectProfitCron::ERROR report data: ".$report_payload['error'], LOG_ERR);
+            echo "ERROR: ".$report_payload['error']."<br>\n";
             return -1;
         }
 
-        echo "Llamando buildReport<br>\n";
-        $data = $report->buildReport($start_date, $end_date, $fk_project);
+        $data = $report_payload['data'];
 
-        if (empty($data) || !isset($data['hierarchy'])) {
-            dol_syslog("ProjectProfitCron::ERROR data empty or hierarchy missing", LOG_ERR);
-            echo "ERROR: data empty<br>\n";
+        echo "Generando PDF<br>\n";
+        $pdf_meta = projectprofit_build_pdf_report($db, $data, $start_date, $end_date, $fk_project);
+        if (!empty($pdf_meta['error'])) {
+            dol_syslog("ProjectProfitCron::ERROR building PDF: ".$pdf_meta['error'], LOG_ERR);
+            echo "ERROR PDF: ".$pdf_meta['error']."<br>\n";
             return -1;
         }
 
@@ -77,18 +75,9 @@ class ProjectProfitCron
         $pdf_file = $pdf_meta['path'];
 
         echo "Calculando totales<br>\n";
-        $tot_ing = 0;
-        $tot_gas = 0;
-        foreach ($data['hierarchy'] as $padre_id => $hijos) {
-            foreach ($hijos as $hijo_id => $servicios) {
-                foreach ($servicios as $servicio_ref => $lineas) {
-                    foreach ($lineas as $l) {
-                        if ($l->tipo_linea == 'INGRESO') $tot_ing += $l->total_ht;
-                        if ($l->tipo_linea == 'GASTO')   $tot_gas += $l->total_ht;
-                    }
-                }
-            }
-        }
+        $totals = projectprofit_calculate_totals($data);
+        $tot_ing = $totals['ingresos'];
+        $tot_gas = $totals['gastos'];
         echo "Totales: ING=$tot_ing GAST=$tot_gas<br>\n";
 
 
