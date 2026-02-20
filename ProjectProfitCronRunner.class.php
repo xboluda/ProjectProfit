@@ -193,55 +193,61 @@ class ProjectProfitCronRunner
     // HTML del PDF
     // (adaptado de tu pintado real)
     // ----------------------------------------------------
+    
     protected function renderPdfHtml($data)
     {
         $hierarchy     = $data['hierarchy'];
         $projects_info = $data['projects_info'];
-
+    
         $out = '
-        <table border="1" cellpadding="3" cellspacing="0" width="100%">
+        <style>
+            th { background-color:#eeeeee; font-weight:bold; }
+            td { font-size:8px; }
+        </style>
+    
+        <table border="1" cellpadding="2" cellspacing="0" width="100%">
         <tr>
-            <th>Grupo</th>
-            <th>Inmueble</th>
-            <th>Tipo</th>
-            <th>Documento</th>
-            <th>Fecha</th>
-            <th>Tercero</th>
-            <th>Descripción</th>
-            <th>Cantidad</th>
-            <th>Total HT</th>
+            <th width="8%">Grupo</th>
+            <th width="10%">Inmueble</th>
+            <th width="7%">Tipo</th>
+            <th width="10%">Documento</th>
+            <th width="8%">Fecha</th>
+            <th width="12%">Tercero</th>
+            <th width="25%">Descripción</th>
+            <th width="5%">Qty</th>
+            <th width="15%">Total HT</th>
         </tr>';
-
+    
         foreach ($hierarchy as $padre_id => $hijos) {
-
+    
             $padre_label = $projects_info[$padre_id]['title'] ?? 'Proyecto '.$padre_id;
-
+    
             foreach ($hijos as $hijo_id => $servicios) {
-
+    
                 $hijo_label = $projects_info[$hijo_id]['title'] ?? 'Proyecto '.$hijo_id;
-
+    
                 foreach ($servicios as $servicio_ref => $lineas) {
-
+    
                     foreach ($lineas as $l) {
-
+    
                         $out .= '<tr>';
-                        $out .= '<td>'.dol_escape_htmltag($padre_label).'</td>';
-                        $out .= '<td>'.dol_escape_htmltag($hijo_label).'</td>';
-                        $out .= '<td>'.dol_escape_htmltag($l->tipo_linea).'</td>';
-                        $out .= '<td>'.dol_escape_htmltag($l->doc_ref).'</td>';
-                        $out .= '<td>'.dol_print_date($this->db->jdate($l->fecha),'day').'</td>';
-                        $out .= '<td>'.dol_escape_htmltag($l->tercero).'</td>';
-                        $out .= '<td>'.dol_escape_htmltag($l->descripcion).'</td>';
-                        $out .= '<td align="right">'.(float)$l->qty.'</td>';
-                        $out .= '<td align="right">'.price($l->total_ht).'</td>';
+                        $out .= '<td width="8%">'.dol_escape_htmltag($padre_label).'</td>';
+                        $out .= '<td width="10%">'.dol_escape_htmltag($hijo_label).'</td>';
+                        $out .= '<td width="7%">'.dol_escape_htmltag($l->tipo_linea).'</td>';
+                        $out .= '<td width="10%">'.dol_escape_htmltag($l->doc_ref).'</td>';
+                        $out .= '<td width="8%">'.dol_print_date($this->db->jdate($l->fecha),'day').'</td>';
+                        $out .= '<td width="12%">'.dol_escape_htmltag($l->tercero).'</td>';
+                        $out .= '<td width="25%">'.dol_escape_htmltag($l->descripcion).'</td>';
+                        $out .= '<td width="5%" align="right">'.(float)$l->qty.'</td>';
+                        $out .= '<td width="15%" align="right">'.price($l->total_ht).'</td>';
                         $out .= '</tr>';
                     }
                 }
             }
         }
-
+    
         $out .= '</table>';
-
+    
         return $out;
     }
 
