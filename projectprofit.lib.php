@@ -84,7 +84,7 @@ function projectprofitAdminPrepareHead()
 	return $head;
 }
 
-function projectprofit_render_html($db, $data)
+function projectprofit_render_html($db, $data, $forpdf = false)
 {
     require_once DOL_DOCUMENT_ROOT.'/projet/class/project.class.php';
 
@@ -186,7 +186,7 @@ function projectprofit_render_html($db, $data)
         // Fila PADRE
         $label_padre = $projects_info[$padre_id]['title']; //?? 'Proyecto '.$padre_id;
         $style = $forpdf ? '' : 'style="background:#d9edf7;font-weight:bold"';
-        $onclick = $forpdf ? '' : onclick="toggleClass(\'grp-'.$padre_toggle.'\')"';
+        $onclick = $forpdf ? '' : 'onclick="toggleClass(\'grp-'.$padre_toggle.'\')"';
         echo '<tr class="linea-header" '.$style.' '.$onclick.'>';
         echo '<td>'.$label_padre.'</td>';
         echo '<td colspan="8"></td>';
@@ -290,7 +290,8 @@ function projectprofit_render_html($db, $data)
                     if ($l->estado_factura == 'PARCIAL')  $color = '#f39c12';
                     if ($l->estado_factura == 'PAGADA')   $color = '#27ae60';
 
-                    echo '<tr class="grp-'.$padre_toggle.' grp-'.$hijo_toggle.' grp-'.$serv_toggle.'" style="display:none">';
+                    $line_style = $forpdf ? '' : 'style="display:none"';
+                    echo '<tr class="grp-'.$padre_toggle.' grp-'.$hijo_toggle.' grp-'.$serv_toggle.'" '.$line_style.'>';
                     echo '<td></td><td></td><td>'.$l->tipo_linea.'</td>';
                     echo '<td>'.$l->doc_ref.'</td>';
                     echo '<td>'.dol_print_date($db->jdate($l->fecha),'day').'</td>';
