@@ -22,7 +22,7 @@ class ProjectProfitCron
         }
 
         $runner = new ProjectProfitCronRunner($this->db);
-        return $runner->run($parameters);
+        // return $runner->run($parameters);
 
         dol_syslog("ProjectProfitCron::START parameters=".$parameters, LOG_INFO);
         echo "START cron<br>\n";
@@ -174,7 +174,7 @@ class ProjectProfitCron
         return $result;
     }
 
-    private function getReportData($db, $start_date, $end_date, $fk_project)
+    protected function getReportData($db, $start_date, $end_date, $fk_project)
     {
         require_once DOL_DOCUMENT_ROOT.'/custom/projectprofit/class/ProjectProfitReport.class.php';
         $report = new ProjectProfitReport($db);
@@ -190,7 +190,7 @@ class ProjectProfitCron
         return array('data' => $data);
     }
 
-    private function calculateTotals($data)
+    protected function calculateTotals($data)
     {
         $tot_ing = 0;
         $tot_gas = 0;
@@ -208,7 +208,7 @@ class ProjectProfitCron
         return array('ingresos' => $tot_ing, 'gastos' => $tot_gas, 'profit' => $tot_ing - $tot_gas);
     }
 
-    private function renderPdfHtml($db, $data)
+    protected function renderPdfHtml($db, $data)
     {
         $hierarchy = $data['hierarchy'];
         $projects_info = $data['projects_info'];
@@ -245,75 +245,64 @@ class ProjectProfitCron
         $out .= '</table>';
         return $out;
     }
+	
+	protected function buildPdfReport($db, $data, $start_date, $end_date, $fk_project)
+	{
+	    global $conf, $langs;
+	
+	    if (empty($data) || empty($data['hierarchy'])) {
+	        return array('error' => 'No report data to build PDF');
+	    }
+	
+	    if (!class_exists('TCPDF')) {
+	        if (file_exists(DOL_DOCUMENT_ROOT.'/includes/tecnickcom/tcpdf/tcpdf.php')) {
+	            require_once DOL_DOCUMENT_ROOT.'/includes/tecnickcom/tcpdf/tcpdf.php';
+	        } else {
+	            return array('error' => 'TCPDF library not found');
+	        }
+	    }
+	
+	    if (is_object($langs)) $langs->load('main');
+	
+	    $tmpdir = (empty($conf->projectprofit->multidir_output[$conf->entity])
+	        ? $conf->dol_data_root.'/projectprofit'
+	        : $conf->projectprofit->multidir_output[$conf->entity]).'/temp';
+	
+	    if (!is_dir($tmpdir) && !@mkdir($tmpdir, 0775, true)) {
+	        return array('error' => 'Unable to create temp directory: '.$tmpdir);
+	    }
+	
+	    $safe_start = preg_replace('/[^0-9-]/', '', (string) $start_date);
+	    $safe_end   = preg_replace('/[^0-9-]/', '', (string) $end_date);
+	
+	    $filename = 'projectprofit_'.$safe_start.'_'.$safe_end.'_'.(int)$fk_project.'_'.dol_print_date(dol_now(), '%Y%m%d%H%M%S').'.pdf';
+	    $filepath = $tmpdir.'/'.$filename;
+	
+	    $pdf = new TCPDF('L', 'mm', 'A4', true, 'UTF-8', false);
+	    $pdf->setPrintHeader(false);
+	    $pdf->setPrintFooter(false);
+	    $pdf->SetMargins(8, 8, 8);
+	    $pdf->AddPage();
+	    $pdf->SetFont('helvetica', '', 8);
+	
+	    $html  = '<h2>ProjectProfit</h2>';
+	    $html .= '<p><strong>Proyecto:</strong> '.($fk_project ?: 'Todos').'</p>';
+	    $html .= '<p><strong>Fechas:</strong> '.$safe_start.' al '.$safe_end.'</p>';
+	    $html .= $this->renderPdfHtml($db, $data);
+	
+	    $pdf->writeHTML($html, true, false, true, false, '');
+	    $pdf->Output($filepath, 'F');
+	
+	    if (!file_exists($filepath)) {
+	        return array('error' => 'Unable to write PDF report');
+	    }
+	
+	    return array(
+	        'path'     => $filepath,
+	        'filename' => $filename
+	    );
+	}
 
-    private function buildPdfReport($db, $data, $start_date, $end_date, $fk_project)
-    {
-        global $conf, $langs;
 
-        if (empty($data) || empty($data['hierarchy'])) {
-            return array('error' => 'No report data to build PDF');
-        }
-
-        if (!class_exists('TCPDF')) {
-            if (file_exists(DOL_DOCUMENT_ROOT.'/includes/tecnickcom/tcpdf/tcpdf.php')) {
-                require_once DOL_DOCUMENT_ROOT.'/includes/tecnickcom/tcpdf/tcpdf.php';
-            } elseif (file_exists(DOL_DOCUMENT_ROOT.'/core/modules/facture/doc/tcpdf/tcpdf.php')) {
-                require_once DOL_DOCUMENT_ROOT.'/core/modules/facture/doc/tcpdf/tcpdf.php';
-            } else {
-                return array('error' => 'TCPDF library not found');
-            }
-        }
-
-        if (is_object($langs)) $langs->load('main');
-
-        $tmpdir = (empty($conf->projectprofit->multidir_output[$conf->entity]) ? $conf->dol_data_root.'/projectprofit' : $conf->projectprofit->multidir_output[$conf->entity]).'/temp';
-        if (!is_dir($tmpdir) && !@mkdir($tmpdir, 0775, true) && !is_dir($tmpdir)) {
-            return array('error' => 'Unable to create temp directory: '.$tmpdir);
-        }
-
-        $safe_start = preg_replace('/[^0-9-]/', '', (string) $start_date);
-        $safe_end = preg_replace('/[^0-9-]/', '', (string) $end_date);
-        $filename = 'projectprofit_'.$safe_start.'_'.$safe_end.'_'.(int) $fk_project.'_'.dol_print_date(dol_now(), '%Y%m%d%H%M%S').'.pdf';
-        $filepath = $tmpdir.'/'.$filename;
-
-        $pdf = new TCPDF('L', 'mm', 'A4', true, 'UTF-8', false);
-        $pdf->setPrintHeader(false);
-        $pdf->setPrintFooter(false);
-        $pdf->SetMargins(8, 8, 8);
-        $pdf->AddPage();
-        $pdf->SetFont('helvetica', '', 8);
-
-        $html = '<h2>ProjectProfit</h2>';
-        $html .= '<p><strong>Proyecto:</strong> '.((int) $fk_project > 0 ? (int) $fk_project : 'Todos').'</p>';
-        $html .= '<p><strong>Fechas:</strong> '.$safe_start.' al '.$safe_end.'</p>';
-        $html .= $this->renderPdfHtml($db, $data);
-
-        $pdf->writeHTML($html, true, false, true, false, '');
-        $pdf->Output($filepath, 'F');
-
-        if (!file_exists($filepath)) {
-            return array('error' => 'Unable to write PDF report');
-        }
-        echo "Enviando mail<br>\n";
-        dol_syslog("ProjectProfitCron::Sending email to ".$email_to, LOG_INFO);
-        $res = $mail->sendfile();
-
-        if ($res) {
-            dol_syslog("ProjectProfitCron::OK mail sent to ".$email_to, LOG_INFO);
-            echo "MAIL SENT OK<br>\n";
-            $result = 0;
-        } else {
-            dol_syslog("ProjectProfitCron::ERROR mail not sent: ".$mail->error, LOG_ERR);
-            echo "MAIL ERROR: ".$mail->error."<br>\n";
-            $result = -1;
-        }
-
-        if (!empty($pdf_file) && file_exists($pdf_file)) {
-            unlink($pdf_file); // borrar el fichero enviado
-        }
-
-        return $result;
-
-        return array('path' => $filepath, 'filename' => $filename);
-    }
+		
 }
