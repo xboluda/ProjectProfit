@@ -427,6 +427,9 @@ function projectprofit_build_pdf_report($db, $data, $start_date, $end_date, $fk_
         }
     }
 
+    if (is_object($langs)) {
+        $langs->load('main');
+    }
     $langs->load('main');
 
     $tmpdir = empty($conf->projectprofit->multidir_output[$conf->entity])
