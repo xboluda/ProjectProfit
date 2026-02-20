@@ -83,13 +83,18 @@ class ProjectProfitCronRunner
         $body .= '<p>Total gastos: '.$totals['gastos'].'</p>';
         $body .= '<p>Profit: '.$totals['profit'].'</p>';
 
+        $attachments = array($pdf['path']);
+        $types       = array('application/pdf');
+        $names       = array(basename($pdf['path']));
+        
         $mail = new CMailFile(
             $subject,
             $email_to,
             $from,
             $body,
-            array($pdf['path']),
-            array('application/pdf'),
+            $attachements,
+            $types,
+            array(),
             array(),
             '',
             '',
@@ -97,7 +102,8 @@ class ProjectProfitCronRunner
             -1,
             '',
             '',
-            'text/html'
+            'text/html',
+            $names
         );
 
         $res = $mail->sendfile();
