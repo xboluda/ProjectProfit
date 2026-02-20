@@ -86,25 +86,25 @@ class ProjectProfitCronRunner
         $attachments = array($pdf['path']);
         $types       = array('application/pdf');
         $names       = array(basename($pdf['path']));
-        
+
         $mail = new CMailFile(
             $subject,
             $email_to,
             $from,
             $body,
-            $attachements,
+            $attachments,
             $types,
-            array(),
+            $names,
             '',
             '',
             0,
             -1,
             '',
             '',
-            'text/html',
-            $names
+            1
         );
 
+        
         $res = $mail->sendfile();
 
         if (!$res) {
