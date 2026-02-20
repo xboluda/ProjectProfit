@@ -22,6 +22,8 @@ class ProjectProfitCron
 
         $db = $this->db;
 
+        $pdf_file = '';
+
         // Parseo de parámetros
         $params = preg_split('/\s+/', trim($parameters));
         $fk_project = (int) ($params[2] ?? 0);
@@ -63,6 +65,16 @@ class ProjectProfitCron
             echo "ERROR: data empty<br>\n";
             return -1;
         }
+
+        echo "Generando PDF<br>\n";
+        $pdf_meta = projectprofit_build_pdf_report($db, $data, $start_date, $end_date, $fk_project);
+        if (!empty($pdf_meta['error'])) {
+            dol_syslog("ProjectProfitCron::ERROR building PDF: ".$pdf_meta['error'], LOG_ERR);
+            echo "ERROR PDF: ".$pdf_meta['error']."<br>\n";
+            return -1;
+        }
+
+        $pdf_file = $pdf_meta['path'];
 
         echo "Calculando totales<br>\n";
         $tot_ing = 0;
@@ -126,14 +138,18 @@ class ProjectProfitCron
         if ($res) {
             dol_syslog("ProjectProfitCron::OK mail sent to ".$email_to, LOG_INFO);
             echo "MAIL SENT OK<br>\n";
-            return 0;
+            $result = 0;
         } else {
             dol_syslog("ProjectProfitCron::ERROR mail not sent: ".$mail->error, LOG_ERR);
             echo "MAIL ERROR: ".$mail->error."<br>\n";
-            return -1;
+            $result = -1;
         }
 
-	if (file_exists($pdf_file)) unlink($pdf_file); // borrar el fichero enviado
+        if (!empty($pdf_file) && file_exists($pdf_file)) {
+            unlink($pdf_file); // borrar el fichero enviado
+        }
+
+        return $result;
 
     }
 }
