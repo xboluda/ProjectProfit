@@ -5,6 +5,13 @@ set -eu
 CONTAINER="${1:-dolibarr-pova-web-pova-1}"
 BASE="/var/www/html/custom/projectprofit"
 
+if command -v php >/dev/null 2>&1; then
+  php -l ProjectProfitCron.class.php >/dev/null
+  php -l ProjectProfitCronRunner.class.php >/dev/null
+  php -l projectprofit.lib.php >/dev/null
+else
+  echo "[warn] local php binary not found; skipping local lint checks" >&2
+fi
 php -l ProjectProfitCron.class.php >/dev/null
 php -l ProjectProfitCronRunner.class.php >/dev/null
 php -l projectprofit.lib.php >/dev/null
