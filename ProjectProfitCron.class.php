@@ -1,6 +1,6 @@
 <?php
 require_once DOL_DOCUMENT_ROOT.'/core/class/CMailFile.class.php';
-require_once DOL_DOCUMENT_ROOT.'/custom/projectprofit/lib/projectprofit.lib.php';
+require_once DOL_DOCUMENT_ROOT.'/custom/projectprofit/lib/projectprofit.cron.lib.php';
 
 
 class ProjectProfitCron
@@ -47,6 +47,7 @@ class ProjectProfitCron
 
         // Crear payload usando proveedor ProjectProfitReport
         dol_syslog("ProjectProfitCron::Building report data through projectprofit_get_report_data", LOG_INFO);
+        $report_payload = projectprofit_cron_get_report_data($db, $start_date, $end_date, $fk_project);
         $report_payload = projectprofit_get_report_data($db, $start_date, $end_date, $fk_project);
         if (!empty($report_payload['error'])) {
             dol_syslog("ProjectProfitCron::ERROR report data: ".$report_payload['error'], LOG_ERR);
@@ -56,6 +57,10 @@ class ProjectProfitCron
 
         $data = $report_payload['data'];
         dol_syslog("ProjectProfitCron::Report payload loaded. Parent groups=".count($data['hierarchy']), LOG_INFO);
+
+        echo "Generando PDF<br>\n";
+        dol_syslog("ProjectProfitCron::Generating PDF file", LOG_INFO);
+        $pdf_meta = projectprofit_cron_build_pdf_report($db, $data, $start_date, $end_date, $fk_project);
 
         echo "Generando PDF<br>\n";
         dol_syslog("ProjectProfitCron::Generating PDF file", LOG_INFO);
@@ -70,6 +75,9 @@ class ProjectProfitCron
 
         $pdf_file = $pdf_meta['path'];
         dol_syslog("ProjectProfitCron::PDF generated at ".$pdf_file, LOG_INFO);
+
+        echo "Calculando totales<br>\n";
+        $totals = projectprofit_cron_calculate_totals($data);
         echo "Generando PDF<br>\n";
         $pdf_meta = projectprofit_build_pdf_report($db, $data, $start_date, $end_date, $fk_project);
         if (!empty($pdf_meta['error'])) {
