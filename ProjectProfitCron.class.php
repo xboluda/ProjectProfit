@@ -1,10 +1,13 @@
 <?php
+require_once DOL_DOCUMENT_ROOT.'/custom/projectprofit/class/ProjectProfitCronRunner.class.php';
 require_once DOL_DOCUMENT_ROOT.'/core/class/CMailFile.class.php';
 require_once DOL_DOCUMENT_ROOT.'/custom/projectprofit/lib/projectprofit.cron.lib.php';
 
 
 class ProjectProfitCron
 {
+    private $db;
+
     public function __construct($db)
     {
         $this->db = $db;
@@ -12,6 +15,8 @@ class ProjectProfitCron
 
     public function sendprojectprofitreport($parameters = '')
     {
+        $runner = new ProjectProfitCronRunner($this->db);
+        return $runner->run($parameters);
         dol_syslog("ProjectProfitCron::START parameters=".$parameters, LOG_INFO);
         echo "START cron<br>\n";
 
