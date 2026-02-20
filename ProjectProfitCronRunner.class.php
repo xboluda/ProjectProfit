@@ -89,7 +89,7 @@ class ProjectProfitCronRunner
             $from,
             $body,
             array($pdf['path']),
-            array(),
+            array('application/pdf'),
             array(),
             '',
             '',
