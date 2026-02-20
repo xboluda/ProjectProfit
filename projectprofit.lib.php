@@ -84,7 +84,7 @@ function projectprofitAdminPrepareHead()
 	return $head;
 }
 
-function projectprofit_render_html($db, $data)
+function projectprofit_render_html($db, $data, $forpdf = false)
 {
     require_once DOL_DOCUMENT_ROOT.'/projet/class/project.class.php';
 
@@ -186,7 +186,7 @@ function projectprofit_render_html($db, $data)
         // Fila PADRE
         $label_padre = $projects_info[$padre_id]['title']; //?? 'Proyecto '.$padre_id;
         $style = $forpdf ? '' : 'style="background:#d9edf7;font-weight:bold"';
-        $onclick = $forpdf ? '' : onclick="toggleClass(\'grp-'.$padre_toggle.'\')"';
+        $onclick = $forpdf ? '' : 'onclick="toggleClass(\'grp-'.$padre_toggle.'\')"';
         echo '<tr class="linea-header" '.$style.' '.$onclick.'>';
         echo '<td>'.$label_padre.'</td>';
         echo '<td colspan="8"></td>';
@@ -290,7 +290,8 @@ function projectprofit_render_html($db, $data)
                     if ($l->estado_factura == 'PARCIAL')  $color = '#f39c12';
                     if ($l->estado_factura == 'PAGADA')   $color = '#27ae60';
 
-                    echo '<tr class="grp-'.$padre_toggle.' grp-'.$hijo_toggle.' grp-'.$serv_toggle.'" style="display:none">';
+                    $line_style = $forpdf ? '' : 'style="display:none"';
+                    echo '<tr class="grp-'.$padre_toggle.' grp-'.$hijo_toggle.' grp-'.$serv_toggle.'" '.$line_style.'>';
                     echo '<td></td><td></td><td>'.$l->tipo_linea.'</td>';
                     echo '<td>'.$l->doc_ref.'</td>';
                     echo '<td>'.dol_print_date($db->jdate($l->fecha),'day').'</td>';
@@ -333,4 +334,149 @@ function projectprofit_render_html($db, $data)
     <?php
 
     return ob_get_clean();
+}
+
+
+/**
+ * Fetch report data using ProjectProfitReport provider.
+ *
+ * @param DoliDB $db
+ * @param string $start_date
+ * @param string $end_date
+ * @param int    $fk_project
+ *
+ * @return array{data:array}|array{error:string}
+ */
+function projectprofit_get_report_data($db, $start_date, $end_date, $fk_project = 0)
+{
+    require_once DOL_DOCUMENT_ROOT.'/custom/projectprofit/class/ProjectProfitReport.class.php';
+    dol_syslog("projectprofit_get_report_data::start start_date=".$start_date." end_date=".$end_date." fk_project=".(int) $fk_project, LOG_DEBUG);
+
+    $report = new ProjectProfitReport($db);
+    if (!method_exists($report, 'buildReport')) {
+        return array('error' => 'buildReport method missing in ProjectProfitReport');
+    }
+
+    $data = $report->buildReport($start_date, $end_date, $fk_project);
+    if (empty($data) || !isset($data['hierarchy'])) {
+        dol_syslog("projectprofit_get_report_data::invalid payload", LOG_ERR);
+        return array('error' => 'Report data empty or invalid hierarchy');
+    }
+
+    dol_syslog("projectprofit_get_report_data::ok parents=".count($data['hierarchy']), LOG_DEBUG);
+
+    return array('data' => $data);
+}
+
+/**
+ * Calculate totals from report hierarchy.
+ *
+ * @param array $data
+ *
+ * @return array{ingresos:float,gastos:float,profit:float}
+ */
+function projectprofit_calculate_totals($data)
+{
+    $tot_ing = 0;
+    $tot_gas = 0;
+
+    foreach ($data['hierarchy'] as $hijos) {
+        foreach ($hijos as $servicios) {
+            foreach ($servicios as $lineas) {
+                foreach ($lineas as $l) {
+                    if ($l->tipo_linea == 'INGRESO') {
+                        $tot_ing += (float) $l->total_ht;
+                    }
+                    if ($l->tipo_linea == 'GASTO') {
+                        $tot_gas += (float) $l->total_ht;
+                    }
+                }
+            }
+        }
+    }
+
+    return array(
+        'ingresos' => $tot_ing,
+        'gastos' => $tot_gas,
+        'profit' => $tot_ing - $tot_gas,
+    );
+}
+
+/**
+ * Build a PDF report file for ProjectProfit.
+ *
+ * @param DoliDB $db         Database handler
+ * @param array  $data       Report payload returned by ProjectProfitReport::buildReport
+ * @param string $start_date Start date (Y-m-d)
+ * @param string $end_date   End date (Y-m-d)
+ * @param int    $fk_project Selected project id (0=all)
+ *
+ * @return array{path:string,filename:string}|array{error:string}
+ */
+function projectprofit_build_pdf_report($db, $data, $start_date, $end_date, $fk_project = 0)
+{
+    global $conf, $langs;
+    dol_syslog("projectprofit_build_pdf_report::start", LOG_INFO);
+
+    if (empty($data) || empty($data['hierarchy'])) {
+        return array('error' => 'No report data to build PDF');
+    }
+
+    if (!class_exists('TCPDF')) {
+        if (file_exists(DOL_DOCUMENT_ROOT.'/includes/tecnickcom/tcpdf/tcpdf.php')) {
+            require_once DOL_DOCUMENT_ROOT.'/includes/tecnickcom/tcpdf/tcpdf.php';
+        } elseif (file_exists(DOL_DOCUMENT_ROOT.'/core/modules/facture/doc/tcpdf/tcpdf.php')) {
+            require_once DOL_DOCUMENT_ROOT.'/core/modules/facture/doc/tcpdf/tcpdf.php';
+        } else {
+            dol_syslog("projectprofit_build_pdf_report::tcpdf_not_found", LOG_ERR);
+            return array('error' => 'TCPDF library not found');
+        }
+    }
+
+    if (is_object($langs)) {
+        $langs->load('main');
+    }
+
+    $tmpdir = empty($conf->projectprofit->multidir_output[$conf->entity])
+        ? $conf->dol_data_root.'/projectprofit'
+        : $conf->projectprofit->multidir_output[$conf->entity];
+    $tmpdir .= '/temp';
+
+    if (!is_dir($tmpdir)) {
+        if (!@mkdir($tmpdir, 0775, true) && !is_dir($tmpdir)) {
+            dol_syslog("projectprofit_build_pdf_report::tmpdir_create_failed tmpdir=".$tmpdir, LOG_ERR);
+            return array('error' => 'Unable to create temp directory: '.$tmpdir);
+        }
+    }
+
+    $safe_start = preg_replace('/[^0-9-]/', '', (string) $start_date);
+    $safe_end = preg_replace('/[^0-9-]/', '', (string) $end_date);
+    $filename = 'projectprofit_'.$safe_start.'_'.$safe_end.'_'.(int) $fk_project.'_'.dol_print_date(dol_now(), '%Y%m%d%H%M%S').'.pdf';
+    $filepath = $tmpdir.'/'.$filename;
+
+    $pdf = new TCPDF('L', 'mm', 'A4', true, 'UTF-8', false);
+    $pdf->SetCreator('Dolibarr');
+    $pdf->SetAuthor('Dolibarr ProjectProfit');
+    $pdf->SetTitle('ProjectProfit '.$safe_start.' - '.$safe_end);
+    $pdf->setPrintHeader(false);
+    $pdf->setPrintFooter(false);
+    $pdf->SetMargins(8, 8, 8);
+    $pdf->AddPage();
+    $pdf->SetFont('helvetica', '', 8);
+
+    $html = '<h2>ProjectProfit</h2>';
+    $html .= '<p><strong>Proyecto:</strong> '.((int) $fk_project > 0 ? (int) $fk_project : 'Todos').'</p>';
+    $html .= '<p><strong>Fechas:</strong> '.$safe_start.' al '.$safe_end.'</p>';
+    $html .= projectprofit_render_html($db, $data, true);
+
+    $pdf->writeHTML($html, true, false, true, false, '');
+    $pdf->Output($filepath, 'F');
+    dol_syslog("projectprofit_build_pdf_report::pdf_written path=".$filepath, LOG_INFO);
+
+    if (!file_exists($filepath)) {
+        dol_syslog("projectprofit_build_pdf_report::pdf_missing_after_write path=".$filepath, LOG_ERR);
+        return array('error' => 'Unable to write PDF report');
+    }
+
+    return array('path' => $filepath, 'filename' => $filename);
 }
