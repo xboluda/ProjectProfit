@@ -95,7 +95,6 @@ class ProjectProfitCronRunner
             $attachements,
             $types,
             array(),
-            array(),
             '',
             '',
             0,
