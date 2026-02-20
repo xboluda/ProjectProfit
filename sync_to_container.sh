@@ -32,6 +32,11 @@ copy_file() {
     echo "        container: $dst_hash" >&2
     exit 1
   fi
+copy_file() {
+  src="$1"
+  dst="$2"
+  echo "[sync] $src -> $CONTAINER:$dst"
+  docker cp "$src" "$CONTAINER:$dst"
 }
 
 copy_file "ProjectProfitCron.class.php" "$BASE/class/ProjectProfitCron.class.php"
