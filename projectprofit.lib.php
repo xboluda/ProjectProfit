@@ -434,6 +434,10 @@ function projectprofit_build_pdf_report($db, $data, $start_date, $end_date, $fk_
         : $conf->projectprofit->multidir_output[$conf->entity];
     $tmpdir .= '/temp';
 
+    if (!is_dir($tmpdir)) {
+        if (!@mkdir($tmpdir, 0775, true) && !is_dir($tmpdir)) {
+            return array('error' => 'Unable to create temp directory: '.$tmpdir);
+        }
     if (!dol_is_dir($tmpdir)) {
         dol_mkdir($tmpdir);
     }
