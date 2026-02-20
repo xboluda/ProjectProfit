@@ -23,43 +23,7 @@ class ProjectProfitCron
 
         $runner = new ProjectProfitCronRunner($this->db);
         return $runner->run($parameters);
-            return -1;
-        }
 
-        $runner = new ProjectProfitCronRunner($this->db);
-        return $runner->run($parameters);
-            return -1;
-        }
-
-        $runner = new ProjectProfitCronRunner($this->db);
-        return $runner->run($parameters);
-            return -1;
-        }
-
-        $runner = new ProjectProfitCronRunner($this->db);
-        return $runner->run($parameters);
-            return -1;
-        }
-
-        $runner = new ProjectProfitCronRunner($this->db);
-        return $runner->run($parameters);
-            return -1;
-        }
-
-        $runner = new ProjectProfitCronRunner($this->db);
-        return $runner->run($parameters);
-            return -1;
-        }
-
-        $runner = new ProjectProfitCronRunner($this->db);
-        return $runner->run($parameters);
-            return -1;
-        }
-
-        $runner = new ProjectProfitCronRunner($this->db);
-        return $runner->run($parameters);
-        $runner = new ProjectProfitCronRunner($this->db);
-        return $runner->run($parameters);
         dol_syslog("ProjectProfitCron::START parameters=".$parameters, LOG_INFO);
         echo "START cron<br>\n";
 
