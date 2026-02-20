@@ -64,6 +64,14 @@ class ProjectProfitCron
             return -1;
         }
 
+        echo "Generando PDF<br>\n";
+        $pdf_meta = projectprofit_build_pdf_report($db, $data, $start_date, $end_date, $fk_project);
+        if (!empty($pdf_meta['error'])) {
+            dol_syslog("ProjectProfitCron::ERROR building PDF: ".$pdf_meta['error'], LOG_ERR);
+            echo "ERROR PDF: ".$pdf_meta['error']."<br>\n";
+            return -1;
+        }
+
         $pdf_file = $pdf_meta['path'];
 
         echo "Calculando totales<br>\n";
