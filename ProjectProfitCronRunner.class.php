@@ -168,6 +168,7 @@ class ProjectProfitCronRunner
         $pdf->setPrintHeader(false);
         $pdf->setPrintFooter(false);
         $pdf->SetMargins(6, 6, 6);
+        $pdf->setCellHeightRatio(1.1);
         $pdf->AddPage();
         $pdf->SetFont('helvetica', '', 8);
 
