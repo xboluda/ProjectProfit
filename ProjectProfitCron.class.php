@@ -48,6 +48,7 @@ class ProjectProfitCron
         // Crear payload usando proveedor ProjectProfitReport
         dol_syslog("ProjectProfitCron::Building report data through projectprofit_get_report_data", LOG_INFO);
         $report_payload = projectprofit_cron_get_report_data($db, $start_date, $end_date, $fk_project);
+        $report_payload = projectprofit_get_report_data($db, $start_date, $end_date, $fk_project);
         if (!empty($report_payload['error'])) {
             dol_syslog("ProjectProfitCron::ERROR report data: ".$report_payload['error'], LOG_ERR);
             echo "ERROR: ".$report_payload['error']."<br>\n";
@@ -60,6 +61,12 @@ class ProjectProfitCron
         echo "Generando PDF<br>\n";
         dol_syslog("ProjectProfitCron::Generating PDF file", LOG_INFO);
         $pdf_meta = projectprofit_cron_build_pdf_report($db, $data, $start_date, $end_date, $fk_project);
+
+        echo "Generando PDF<br>\n";
+        dol_syslog("ProjectProfitCron::Generating PDF file", LOG_INFO);
+
+        echo "Generando PDF<br>\n";
+        $pdf_meta = projectprofit_build_pdf_report($db, $data, $start_date, $end_date, $fk_project);
         if (!empty($pdf_meta['error'])) {
             dol_syslog("ProjectProfitCron::ERROR building PDF: ".$pdf_meta['error'], LOG_ERR);
             echo "ERROR PDF: ".$pdf_meta['error']."<br>\n";
@@ -71,6 +78,18 @@ class ProjectProfitCron
 
         echo "Calculando totales<br>\n";
         $totals = projectprofit_cron_calculate_totals($data);
+        echo "Generando PDF<br>\n";
+        $pdf_meta = projectprofit_build_pdf_report($db, $data, $start_date, $end_date, $fk_project);
+        if (!empty($pdf_meta['error'])) {
+            dol_syslog("ProjectProfitCron::ERROR building PDF: ".$pdf_meta['error'], LOG_ERR);
+            echo "ERROR PDF: ".$pdf_meta['error']."<br>\n";
+            return -1;
+        }
+
+        $pdf_file = $pdf_meta['path'];
+
+        echo "Calculando totales<br>\n";
+        $totals = projectprofit_calculate_totals($data);
         $tot_ing = $totals['ingresos'];
         $tot_gas = $totals['gastos'];
         echo "Totales: ING=$tot_ing GAST=$tot_gas<br>\n";
