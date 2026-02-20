@@ -365,6 +365,9 @@ function projectprofit_get_report_data($db, $start_date, $end_date, $fk_project 
 
     dol_syslog("projectprofit_get_report_data::ok parents=".count($data['hierarchy']), LOG_DEBUG);
 
+        return array('error' => 'Report data empty or invalid hierarchy');
+    }
+
     return array('data' => $data);
 }
 
@@ -436,6 +439,7 @@ function projectprofit_build_pdf_report($db, $data, $start_date, $end_date, $fk_
     if (is_object($langs)) {
         $langs->load('main');
     }
+    $langs->load('main');
 
     $tmpdir = empty($conf->projectprofit->multidir_output[$conf->entity])
         ? $conf->dol_data_root.'/projectprofit'
@@ -447,6 +451,10 @@ function projectprofit_build_pdf_report($db, $data, $start_date, $end_date, $fk_
             dol_syslog("projectprofit_build_pdf_report::tmpdir_create_failed tmpdir=".$tmpdir, LOG_ERR);
             return array('error' => 'Unable to create temp directory: '.$tmpdir);
         }
+            return array('error' => 'Unable to create temp directory: '.$tmpdir);
+        }
+    if (!dol_is_dir($tmpdir)) {
+        dol_mkdir($tmpdir);
     }
 
     $safe_start = preg_replace('/[^0-9-]/', '', (string) $start_date);
@@ -475,6 +483,8 @@ function projectprofit_build_pdf_report($db, $data, $start_date, $end_date, $fk_
 
     if (!file_exists($filepath)) {
         dol_syslog("projectprofit_build_pdf_report::pdf_missing_after_write path=".$filepath, LOG_ERR);
+
+    if (!file_exists($filepath)) {
         return array('error' => 'Unable to write PDF report');
     }
 
