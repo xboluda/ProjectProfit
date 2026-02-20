@@ -52,6 +52,8 @@ docker exec -it "$CONTAINER" sh -lc "
 php -l $BASE/class/ProjectProfitCron.class.php &&
 php -l $BASE/class/ProjectProfitCronRunner.class.php &&
 php -l $BASE/lib/projectprofit.lib.php &&
+! grep -q '<!DOCTYPE html>' $BASE/class/ProjectProfitCron.class.php &&
+test \"\$(grep -c 'class ProjectProfitCron' $BASE/class/ProjectProfitCron.class.php)\" -eq 1 &&
 echo '---- head cron ----' &&
 nl -ba $BASE/class/ProjectProfitCron.class.php | sed -n '1,30p' &&
 echo '---- hashes ----' &&
