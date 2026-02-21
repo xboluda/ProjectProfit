@@ -1,139 +1,326 @@
 <?php
-require_once DOL_DOCUMENT_ROOT.'/custom/projectprofit/class/ProjectProfitReport.class.php';
-require_once DOL_DOCUMENT_ROOT.'/core/class/CMailFile.class.php';
-require_once DOL_DOCUMENT_ROOT.'/custom/projectprofit/lib/projectprofit.lib.php';
 
-
-class ProjectProfitCron
+class ProjectProfitReport
 {
+    private $db;
+
     public function __construct($db)
     {
         $this->db = $db;
     }
 
 
-
-    public function sendprojectprofitreport($parameters = '')
+    /**
+     * Devuelve todos los datos del informe
+     */
+    public function buildReport($start_date, $end_date, $fk_project)
     {
-        dol_syslog("ProjectProfitCron::START parameters=".$parameters, LOG_INFO);
-        echo "START cron<br>\n";
+        require_once DOL_DOCUMENT_ROOT.'/projet/class/project.class.php';
 
-        global $conf;
+        $db   = $this->db;
+        $proj = new Project($db);
 
-        $db = $this->db;
+        if ($fk_project < 0) $fk_project = 0;
 
-        // Parseo de parámetros
-        $params = preg_split('/\s+/', trim($parameters));
-        $fk_project = (int) ($params[2] ?? 0);
-        $email_to   = $params[3] ?? 'boluda.casas@gmail.com';
+        // ==============================
+        // 1. Construcción proyectos
+        // ==============================
 
-	// Calcular fechas
-	if (!empty($params[0]) && !empty($params[1])) {
-    	    $start_date = $params[0];
-    	    $end_date   = $params[1];
-	} else {
-	    // Por defecto: mes actual
-	    $hoy = new DateTime();
-	    $start_date = (new DateTime('first day of January'))->format('Y-m-d');
-	    $end_date = (new DateTime())->format('Y-m-d');
+        $project_ids       = [];
+        $projects_info     = [];
+        $project_hierarchy = [];
+        $project_parent    = [];
 
-	    // $start_date = $hoy->format('Y-m-01');  // primer día del mes
-	    // $end_date   = $hoy->format('Y-m-t');   // último día del mes
-	}
+        if ($fk_project > 0) {
 
-        echo "Params: $start_date - $end_date - $fk_project - $email_to<br>\n";
-        dol_syslog("ProjectProfitCron::Params parsed: start=$start_date end=$end_date fk_project=$fk_project email=$email_to", LOG_INFO);
+            if ($proj->fetch($fk_project) > 0) {
 
-        // Crear objeto report
-        echo "Instanciando ProjectProfitReport<br>\n";
-        dol_syslog("ProjectProfitCron::Creating ProjectProfitReport object", LOG_INFO);
+                $project_ids[] = $fk_project;
+                $projects_info[$fk_project] = [
+                    'ref'   => $proj->ref,
+                    'title' => $proj->title
+                ];
 
-        $report = new ProjectProfitReport($db);
-        if (!method_exists($report, 'buildReport')) {
-            dol_syslog("ProjectProfitCron::ERROR buildReport method does not exist", LOG_ERR);
-            echo "ERROR: buildReport method missing<br>\n";
-            return -1;
-        }
+                if (!empty($proj->fk_project_parent)) {
 
-        echo "Llamando buildReport<br>\n";
-        $data = $report->buildReport($start_date, $end_date, $fk_project);
+                    $parent_id = $proj->fk_project_parent;
+                    $project_parent[$fk_project] = $parent_id;
 
-        if (empty($data) || !isset($data['hierarchy'])) {
-            dol_syslog("ProjectProfitCron::ERROR data empty or hierarchy missing", LOG_ERR);
-            echo "ERROR: data empty<br>\n";
-            return -1;
-        }
+                    if ($proj->fetch($parent_id) > 0) {
+                        $project_ids[] = $parent_id;
+                        $projects_info[$parent_id] = [
+                            'ref'   => $proj->ref,
+                            'title' => $proj->title
+                        ];
+                    }
 
-        echo "Calculando totales<br>\n";
-        $tot_ing = 0;
-        $tot_gas = 0;
-        foreach ($data['hierarchy'] as $padre_id => $hijos) {
-            foreach ($hijos as $hijo_id => $servicios) {
-                foreach ($servicios as $servicio_ref => $lineas) {
-                    foreach ($lineas as $l) {
-                        if ($l->tipo_linea == 'INGRESO') $tot_ing += $l->total_ht;
-                        if ($l->tipo_linea == 'GASTO')   $tot_gas += $l->total_ht;
+                    $project_hierarchy[$parent_id][] = $fk_project;
+
+                } else {
+
+                    $project_hierarchy[$fk_project] = [];
+
+                    $children = $proj->getChildren($fk_project, true);
+                    foreach ($children as $child) {
+
+                        $project_ids[] = $child->rowid;
+                        $projects_info[$child->rowid] = [
+                            'ref'   => $child->ref,
+                            'title' => $child->title
+                        ];
+
+                        $project_parent[$child->rowid] = $fk_project;
+                        $project_hierarchy[$fk_project][] = $child->rowid;
                     }
                 }
             }
-        }
-        echo "Totales: ING=$tot_ing GAST=$tot_gas<br>\n";
 
-
-
-
-
-
-
-
-        // Preparar mail
-        $html  = "<h2>ProjectProfit Report</h2>";
-        $html .= "<p>Proyecto: ".($fk_project ?: 'Todos')."</p>";
-        $html .= "<p>Fechas: $start_date al $end_date</p>";
-        $html .= "<p>Total ingresos: $tot_ing</p>";
-        $html .= "<p>Total gastos: $tot_gas</p>";
-        $html .= "<p>Profit: ".($tot_ing - $tot_gas)."</p>";
-
-        $subject = "ProjectProfit Cron Report: $start_date - $end_date";
-
-        $from = !empty($conf->global->MAIN_MAIL_SENDER)
-            ? $conf->global->MAIN_MAIL_SENDER
-            : $conf->global->MAIN_INFO_SOCIETE_MAIL;
-
-        echo "Preparando mail<br>\n";
-        dol_syslog("ProjectProfitCron::Preparing mail", LOG_INFO);
-
-        $mail = new CMailFile(
-            $subject,
-            $email_to,
-            $from,
-            $html,
-            array($pdf_file),   // attachments
-            array(),   // cc
-            array(),   // bcc
-            '',        // delivery receipt
-            '',        // msgid
-            0,
-            -1,
-            '',
-            '',
-            'text/html'
-        );
-
-        echo "Enviando mail<br>\n";
-        $res = $mail->sendfile();
-
-        if ($res) {
-            dol_syslog("ProjectProfitCron::OK mail sent to ".$email_to, LOG_INFO);
-            echo "MAIL SENT OK<br>\n";
-            return 0;
         } else {
-            dol_syslog("ProjectProfitCron::ERROR mail not sent: ".$mail->error, LOG_ERR);
-            echo "MAIL ERROR: ".$mail->error."<br>\n";
-            return -1;
+
+            $sql = "SELECT rowid FROM llx_projet";
+            $resql = $db->query($sql);
+
+            while ($o = $db->fetch_object($resql)) {
+
+                if ($proj->fetch($o->rowid) <= 0) continue;
+
+                $project_ids[] = $proj->id;
+
+                $projects_info[$proj->id] = [
+                    'ref'   => $proj->ref,
+                    'title' => $proj->title
+                ];
+
+                if (!empty($proj->fk_project_parent)) continue; // solo padres reales
+
+                $project_hierarchy[$proj->id] = [];
+
+                $children = $proj->getChildren($proj->id, true);
+
+                foreach ($children as $child) {
+
+                    $project_ids[] = $child->rowid;
+
+                    $projects_info[$child->rowid] = [
+                        'ref'   => $child->ref,
+                        'title' => $child->title
+                    ];
+
+                    $project_parent[$child->rowid] = $proj->id;
+                    $project_hierarchy[$proj->id][] = $child->rowid;
+                }
+            }
         }
 
-	if (file_exists($pdf_file)) unlink($pdf_file); // borrar el fichero enviado
+        $project_ids = array_unique($project_ids);
 
+        // ==============================
+        // 2. Where
+        // ==============================
+
+        $where_client = "f.fk_statut IN (1,2)
+                          AND f.datef BETWEEN '".$db->escape($start_date)."'
+                          AND '".$db->escape($end_date)."'";
+
+        $where_fourn  = $where_client;
+
+        if (!empty($project_ids)) {
+
+            $ids = implode(',', $project_ids);
+
+            $where_client .= " AND (
+                f.fk_projet IN ($ids)
+                OR EXISTS (
+                    SELECT 1
+                    FROM llx_element_element ee
+                    WHERE ee.sourcetype = 'facturedet'
+                      AND ee.targettype = 'project'
+                      AND ee.fk_source = fd.rowid
+                      AND ee.fk_target IN ($ids)
+                )
+            )";
+
+            $where_fourn .= " AND (
+                f.fk_projet IN ($ids)
+                OR EXISTS (
+                    SELECT 1
+                    FROM llx_element_element ee
+                    WHERE ee.sourcetype = 'facture_fourn_det'
+                      AND ee.targettype = 'project'
+                      AND ee.fk_source = fd.rowid
+                      AND ee.fk_target IN ($ids)
+                )
+            )";
+        }
+
+        // ==============================
+        // 3. SQL principal
+        // ==============================
+
+        $sql = "SELECT t.tipo_documento, t.producto_ref, t.producto_nombre, t.doc_ref, t.fecha, t.tercero, t.descripcion, t.qty, t.total_ht, t.tipo_linea, t.estado_factura, t.fk_project AS fk_project_child
+        FROM (
+            -- FACTURAS CLIENTE
+            SELECT
+                'CLIENTE' AS tipo_documento,
+                COALESCE(pr.ref,'SIN_PRODUCTO') AS producto_ref,
+                COALESCE(pr.label,'Sin descripción') AS producto_nombre,
+                f.ref AS doc_ref,
+                f.datef AS fecha,
+                s.nom AS tercero,
+                fd.description AS descripcion,
+                fd.qty AS qty,
+                fd.total_ht AS total_ht,
+                CASE
+                    WHEN a.pcg_type IN ('INGRES','INCOME') THEN 'INGRESO'
+                    WHEN a.pcg_type IN ('DESPESA','EXPENSE') THEN 'GASTO'
+                WHEN a.rowid IS NULL THEN 'SIN VENTILAR'
+                    ELSE CONCAT(a.account_number,' - ',a.pcg_type)
+                END AS tipo_linea,
+                CASE
+                    WHEN f.paye = 1 THEN 'PAGADA'
+                    WHEN EXISTS (
+                        SELECT 1 FROM llx_paiement_facture pf
+                        WHERE pf.fk_facture = f.rowid
+                    ) THEN 'PARCIAL'
+                    ELSE 'VALIDADA'
+                END AS estado_factura,
+                f.fk_projet AS fk_project
+            FROM llx_facture f
+            JOIN llx_facturedet fd ON fd.fk_facture = f.rowid
+            LEFT JOIN llx_product pr ON pr.rowid = fd.fk_product
+            LEFT JOIN llx_accounting_account a ON a.rowid = fd.fk_code_ventilation
+            JOIN llx_societe s ON s.rowid = f.fk_soc
+            WHERE $where_client
+
+            UNION ALL
+
+            -- FACTURAS PROVEEDOR
+            SELECT
+                'PROVEEDOR' AS tipo_documento,
+                COALESCE(pr.ref,'SIN_PRODUCTO') AS producto_ref,
+                COALESCE(pr.label,'Sin descripción') AS producto_nombre,
+                f.ref AS doc_ref,
+                f.datef AS fecha,
+                s.nom AS tercero,
+                fd.description AS descripcion,
+                fd.qty AS qty,
+                fd.total_ht AS total_ht,
+                CASE
+                    WHEN a.pcg_type IN ('INGRES','INCOME') THEN 'INGRESO'
+                    WHEN a.pcg_type IN ('DESPESA','EXPENSE') THEN 'GASTO'
+                    WHEN a.rowid IS NULL THEN 'SIN VENTILAR'
+                    ELSE CONCAT(a.account_number,' - ',a.pcg_type)
+                END AS tipo_linea,
+                CASE
+                    WHEN f.paye = 1 THEN 'PAGADA'
+                    WHEN EXISTS (
+                        SELECT 1 FROM llx_paiementfourn_facturefourn pf
+                        WHERE pf.fk_facturefourn = f.rowid
+                    ) THEN 'PARCIAL'
+                    ELSE 'VALIDADA'
+                END AS estado_factura,
+                f.fk_projet AS fk_project
+            FROM llx_facture_fourn f
+            JOIN llx_facture_fourn_det fd ON fd.fk_facture_fourn = f.rowid
+            LEFT JOIN llx_product pr ON pr.rowid = fd.fk_product
+            LEFT JOIN llx_accounting_account a ON a.rowid = fd.fk_code_ventilation
+            JOIN llx_societe s ON s.rowid = f.fk_soc
+            WHERE $where_fourn
+        ) t
+        ORDER BY t.fk_project, t.producto_ref, t.tipo_linea, t.fecha, t.doc_ref";
+
+
+        $resql = $db->query($sql);
+        if (!$resql) {
+            throw new Exception($db->lasterror());
+        }
+
+        // ==============================
+        // 4. Construcción hierarchy final
+        // ==============================
+
+        $hierarchy = [];
+
+        while ($obj = $db->fetch_object($resql)) {
+
+            $fk_child = (int) $obj->fk_project_child;
+
+            // -----------------------------
+            // Determinar padre real
+            // -----------------------------
+            if (!empty($project_parent[$fk_child]) && $project_parent[$fk_child] > 0) {
+
+                $padre_id = (int) $project_parent[$fk_child];
+
+                // <<< CAMBIO: asegurar info del PADRE real
+                if (!isset($projects_info[$padre_id])) {
+                    if ($proj->fetch($padre_id) > 0) {
+                        $projects_info[$padre_id] = [
+                            'ref'   => $proj->ref,
+                            'title' => $proj->title
+                        ];
+                    } else {
+                        $projects_info[$padre_id] = [
+                            'ref'   => 'PADRE-'.$padre_id,
+                            'title' => 'Proyecto '.$padre_id
+                        ];
+                    }
+                }
+
+            } else {
+
+                // <<< CAMBIO: el propio proyecto es padre
+                $padre_id = $fk_child;
+
+                if (!isset($projects_info[$padre_id])) {
+                    if ($proj->fetch($padre_id) > 0) {
+                        $projects_info[$padre_id] = [
+                            'ref'   => $proj->ref,
+                            'title' => $proj->title
+                        ];
+                    } else {
+                        $projects_info[$padre_id] = [
+                            'ref'   => 'PADRE-'.$padre_id,
+                            'title' => 'Proyecto '.$padre_id
+                        ];
+                    }
+                }
+            }
+
+            // <<< CAMBIO: asegurar también info del HIJO
+            if (!isset($projects_info[$fk_child])) {
+                if ($proj->fetch($fk_child) > 0) {
+                    $projects_info[$fk_child] = [
+                        'ref'   => $proj->ref,
+                        'title' => $proj->title
+                    ];
+                } else {
+                    $projects_info[$fk_child] = [
+                        'ref'   => 'HIJO-'.$fk_child,
+                        'title' => 'Proyecto '.$fk_child
+                    ];
+                }
+            }
+
+            // -----------------------------
+            // Insertar en jerarquía
+            // -----------------------------
+            $hierarchy[$padre_id][$fk_child][$obj->producto_ref][] = $obj;
+
+        }
+
+
+
+
+        // ==============================
+        // 5. Resultado
+        // ==============================
+
+        return [
+            'hierarchy'        => $hierarchy,
+            'projects_info'    => $projects_info,
+            'project_parent'   => $project_parent,
+            'project_ids'      => $project_ids
+        ];
     }
 }
