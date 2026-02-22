@@ -23,13 +23,16 @@ class ProjectProfitCronRunner
 
         $params = preg_split('/\s+/', trim($parameters));
 
-        $fk_project = (int) ($params[2] ?? 0);
-        $email_to   = $params[3] ?? $conf->global->MAIN_INFO_SOCIETE_MAIL;
+        $fk_project = (int) ($params[0] ?? 0);
+        $email_to   = $params[1] ?? $conf->global->MAIN_INFO_SOCIETE_MAIL;
+
+	$start_date = null;
+	$end_date   = null;
 
         // Fechas
-        if (!empty($params[0]) && !empty($params[1])) {
-            $start_date = $params[0];
-            $end_date   = $params[1];
+        if (!empty($params[2]) && !empty($params[3])) {
+            $start_date = $params[2];
+            $end_date   = $params[3];
         } else {
             $d = new DateTime();
             $start_date = $d->format('Y-01-01');
