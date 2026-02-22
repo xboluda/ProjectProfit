@@ -324,20 +324,6 @@ class ProjectProfitCronRunner
 			        $txtEstado = 'No'; $colorEstado = '#e74c3c'; break;
 			}
 
-			//$estado = (int) ($l->estado_factura ?? 0);
-
-                        //$txtEstado   = 'NO';
-                        //$colorEstado = '#e74c3c'; // rojo
-
-                        //if ($estado === 2) {
-                        //    $txtEstado   = 'SI';
-                        //    $colorEstado = '#27ae60'; // verde
-                        //}
-                        //elseif ($estado === 1) {
-                        //    $txtEstado   = 'Parcial';
-                        //    $colorEstado = '#f39c12'; // ambar
-                        //}
-
                         $out .= '<tr>';
                         $out .= '<td width="5%"></td>';
                         $out .= '<td width="5%"></td>';
