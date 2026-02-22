@@ -32,7 +32,8 @@ class ProjectProfitCronRunner
             $end_date   = $params[1];
         } else {
             $d = new DateTime();
-            $start_date = $d->format('Y-m-01');
+            $start_date = $d->format('Y-01-01');
+	    $d->modify('first day of last month');
             $end_date   = $d->format('Y-m-t');
         }
 
@@ -71,6 +72,7 @@ class ProjectProfitCronRunner
         // Email
         // ----------------------------------------------------
 
+	// Construir el cuerpo
         $subject = 'ProjectProfit '.$start_date.' - '.$end_date;
 
         $from = !empty($conf->global->MAIN_MAIL_SENDER)
@@ -82,6 +84,7 @@ class ProjectProfitCronRunner
         $body .= '<p>Total ingresos: '.$totals['ingresos'].'</p>';
         $body .= '<p>Total gastos: '.$totals['gastos'].'</p>';
         $body .= '<p>Profit: '.$totals['profit'].'</p>';
+
 
         $attachments = array($pdf['path']);
         $types       = array('application/pdf');
@@ -104,7 +107,6 @@ class ProjectProfitCronRunner
             1
         );
 
-        
         $res = $mail->sendfile();
 
         if (!$res) {
@@ -112,9 +114,12 @@ class ProjectProfitCronRunner
             return -1;
         }
 
+
+        // Borrar el PDF temporal
         if (is_file($pdf['path'])) {
             @unlink($pdf['path']);
         }
+
 
         dol_syslog('ProjectProfitCronRunner::END OK', LOG_INFO);
 
@@ -199,62 +204,215 @@ class ProjectProfitCronRunner
     // HTML del PDF
     // (adaptado de tu pintado real)
     // ----------------------------------------------------
-    
+
     protected function renderPdfHtml($data)
     {
+
+	$totalIngresos = 0;
+	$totalGastos   = 0;
+
         $hierarchy     = $data['hierarchy'];
         $projects_info = $data['projects_info'];
-    
+
         $out = '
         <style>
             th { background-color:#eeeeee; font-weight:bold; }
             td { font-size:8px; }
         </style>
-    
+
         <table border="1" cellpadding="2" cellspacing="0" width="100%">
         <tr>
-            <th width="8%">Grupo</th>
-            <th width="10%">Inmueble</th>
+            <th width="5%">Grupo</th>
+            <th width="5%">Inmueble</th>
             <th width="7%">Tipo</th>
             <th width="10%">Documento</th>
             <th width="8%">Fecha</th>
-            <th width="12%">Tercero</th>
-            <th width="25%">Descripción</th>
+            <th width="15%">Tercero</th>
+            <th width="29%">Descripcion</th>
             <th width="5%">Qty</th>
-            <th width="15%">Total HT</th>
+            <th width="11%">Total HT</th>
+	    <th width="5%">Pagado</th>
         </tr>';
-    
+
+
         foreach ($hierarchy as $padre_id => $hijos) {
-    
+
+	    $subtotalPadre = 0;
+
             $padre_label = $projects_info[$padre_id]['title'] ?? 'Proyecto '.$padre_id;
-    
+
+            // =========================
+            // FILA PADRE (una sola vez)
+            // =========================
+            $out .= '<tr>';
+            $out .= '<td colspan="10"><b>'.dol_escape_htmltag($padre_label).'</b></td>';
+            $out .= '</tr>';
+
+
             foreach ($hijos as $hijo_id => $servicios) {
-    
+
+		$subtotalHijo = 0;
+
                 $hijo_label = $projects_info[$hijo_id]['title'] ?? 'Proyecto '.$hijo_id;
-    
+
+                // =========================
+                // FILA HIJO (una sola vez)
+                // =========================
+                $out .= '<tr>';
+                $out .= '<td></td>';
+                $out .= '<td colspan="9"><b>'.dol_escape_htmltag($hijo_label).'</b></td>';
+                $out .= '</tr>';
+
+
                 foreach ($servicios as $servicio_ref => $lineas) {
-    
+
+
+                    // =========================
+                    // calcular subtotal del servicio
+                    // (solo INGRESO / GASTO)
+                    // =========================
+                    $subtotalServicio = 0;
+
                     foreach ($lineas as $l) {
-    
+                        if ($l->tipo_linea === 'INGRESO') {
+                            $subtotalServicio += (float) $l->total_ht;
+                        } elseif ($l->tipo_linea === 'GASTO') {
+                            $subtotalServicio -= (float) $l->total_ht;
+                        }
+
+                        if ($l->tipo_linea === 'INGRESO') {
+                            $totalIngresos += (float) $l->total_ht;
+                        }
+                        elseif ($l->tipo_linea === 'GASTO') {
+                            $totalGastos += (float) $l->total_ht;
+                        }
+
+                    }
+
+		    $subtotalHijo += $subtotalServicio;
+
+                    $producto = $lineas[0]->producto_nombre ?? '';
+                    $labelServicio = trim($servicio_ref.' '.$producto);
+
+                    // =========================
+                    // FILA SERVICIO (una sola vez)
+                    // =========================
+                    $out .= '<tr>';
+                    $out .= '<td colspan="2"></td>';
+                    $out .= '<td colspan="6"><b>'.dol_escape_htmltag($labelServicio).'</b></td>';
+                    $out .= '<td align="right"><b>'.price($subtotalServicio).'</b></td>';
+		    $out .= '<td></td>';
+                    $out .= '</tr>';
+
+
+                    // =========================
+                    // FILAS DE FACTURA
+                    // =========================
+                    foreach ($lineas as $l) {
+
+			$estadoLinea = $l->estado_factura ?? 'VALIDADA';
+			switch ($estadoLinea) {
+			    case 'PAGADA':
+			        $txtEstado = 'Si'; $colorEstado = '#27ae60'; break;
+			    case 'PARCIAL':
+			        $txtEstado = 'Parcial'; $colorEstado = '#f39c12'; break;
+			    case 'VALIDADA':
+			    default:
+			        $txtEstado = 'No'; $colorEstado = '#e74c3c'; break;
+			}
+
+			//$estado = (int) ($l->estado_factura ?? 0);
+
+                        //$txtEstado   = 'NO';
+                        //$colorEstado = '#e74c3c'; // rojo
+
+                        //if ($estado === 2) {
+                        //    $txtEstado   = 'SI';
+                        //    $colorEstado = '#27ae60'; // verde
+                        //}
+                        //elseif ($estado === 1) {
+                        //    $txtEstado   = 'Parcial';
+                        //    $colorEstado = '#f39c12'; // ambar
+                        //}
+
                         $out .= '<tr>';
-                        $out .= '<td width="8%">'.dol_escape_htmltag($padre_label).'</td>';
-                        $out .= '<td width="10%">'.dol_escape_htmltag($hijo_label).'</td>';
+                        $out .= '<td width="5%"></td>';
+                        $out .= '<td width="5%"></td>';
                         $out .= '<td width="7%">'.dol_escape_htmltag($l->tipo_linea).'</td>';
                         $out .= '<td width="10%">'.dol_escape_htmltag($l->doc_ref).'</td>';
                         $out .= '<td width="8%">'.dol_print_date($this->db->jdate($l->fecha),'day').'</td>';
-                        $out .= '<td width="12%">'.dol_escape_htmltag($l->tercero).'</td>';
-                        $out .= '<td width="25%">'.dol_escape_htmltag($l->descripcion).'</td>';
+                        $out .= '<td width="15%">'.dol_escape_htmltag($l->tercero).'</td>';
+                        $out .= '<td width="29%">'.dol_escape_htmltag($l->descripcion).'</td>';
                         $out .= '<td width="5%" align="right">'.(float)$l->qty.'</td>';
-                        $out .= '<td width="15%" align="right">'.price($l->total_ht).'</td>';
+                        $out .= '<td width="11%" align="right">'.price($l->total_ht).'</td>';
+			$out .= '<td width="5%" align="center" style="font-size:6px;color:'.$colorEstado.';">'
+			      . $txtEstado
+			      . '</td>';
                         $out .= '</tr>';
                     }
                 }
+
+		// =========================
+		// SUBTOTAL PROYECTO HIJO
+		// =========================
+		$out .= '<tr>';
+		$out .= '<td colspan="2"></td>';
+		$out .= '<td colspan="6" align="right"><b>Subtotal '.$hijo_label.'</b></td>';
+		$out .= '<td align="right"><b>'.price($subtotalHijo).'</b></td>';
+		$out .= '<td></td>';
+		$out .= '</tr>';
+
+		$subtotalPadre += $subtotalHijo;
+
+
             }
+
+            // =========================
+            // SUBTOTAL PADRE
+            // =========================
+            $out .= '<tr>';
+            $out .= '<td colspan="7" align="right"><b>Subtotal '.$padre_label.'</b></td>';
+            $out .= '<td colspan="2" align="right"><b>'.price($subtotalPadre).'</b></td>';
+	    $out .= '<td></td>';
+            $out .= '</tr>';
+
         }
-    
+
+        // =========================
+        // TOTALES GENERALES
+        // =========================
+
+        $profit = $totalIngresos - $totalGastos;
+
+        $out .= '<tr>
+            <td colspan="9" style="border-top:2px solid #000;"></td>
+        </tr>';
+
+        $out .= '<tr>';
+        $out .= '<td colspan="8" align="right"><b>Total ingresos</b></td>';
+        $out .= '<td colspan="2" align="right"><b>'.price($totalIngresos).'</b></td>';
+	$out .= '<td></td>';
+        $out .= '</tr>';
+
+        $out .= '<tr>';
+        $out .= '<td colspan="8" align="right"><b>Total gastos</b></td>';
+        $out .= '<td colspan="2" align="right"><b>'.price($totalGastos).'</b></td>';
+	$out .= '<td></td>';
+        $out .= '</tr>';
+
+        $out .= '<tr>';
+        $out .= '<td colspan="8" align="right"><b>Profit</b></td>';
+        $out .= '<td colspan="2" align="right"><b>'.price($profit).'</b></td>';
+	$out .= '<td></td>';
+        $out .= '</tr>';
+
+
         $out .= '</table>';
-    
+
         return $out;
     }
+
+
+
 
 }
